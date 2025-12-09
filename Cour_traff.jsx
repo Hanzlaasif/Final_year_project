@@ -1,136 +1,84 @@
-// // src/components/CourierTraffic.jsx
-// import React, { useCallback, useEffect, useRef, useState } from "react";
-// import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
-// import { io } from "socket.io-client";
+import React, { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import axios from "axios";
 
-// const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
-// const GOOGLE_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY; // set in .env
+// Custom rider icon
+const riderIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+  iconSize: [40, 40],
+});
 
-// const containerStyle = {
-//   width: "100%",
-//   height: "520px",
-// };
+export default function CourierTracking() {
+  const [position, setPosition] = useState({ lat: 30.3753, lng: 69.3451 }); // default pakistan
+  const [address, setAddress] = useState("Fetching address...");
+  const [loading, setLoading] = useState(true);
 
-// export default function CourierTraffic() {
-//   const [trackingId, setTrackingId] = useState("TRACK123"); // default
-//   const [connected, setConnected] = useState(false);
-//   const [markerPos, setMarkerPos] = useState(null);
-//   const [address, setAddress] = useState("");
-//   const socketRef = useRef(null);
-//   const geocoderRef = useRef(null);
+  useEffect(() => {
+    // 📌 SIMULATE REAL-TIME RIDER TRACKING (Replace with backend realtime data)
+    const interval = setInterval(() => {
+      setPosition((prev) => ({
+        lat: prev.lat + (Math.random() - 0.5) * 0.001,
+        lng: prev.lng + (Math.random() - 0.5) * 0.001,
+      }));
+    }, 5000);
 
-//   // load google maps script
-//   const { isLoaded } = useJsApiLoader({
-//     googleMapsApiKey: GOOGLE_API_KEY,
-//     libraries: ["places"],
-//   });
+    return () => clearInterval(interval);
+  }, []);
 
-//   // initialize socket
-//   useEffect(() => {
-//     socketRef.current = io(SOCKET_URL, { transports: ["websocket"] });
-//     const socket = socketRef.current;
+  // 📌 Convert Lat/Lng → Address
+  useEffect(() => {
+    const fetchAddress = async () => {
+      try {
+        const res = await axios.get(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.lat}&lon=${position.lng}`
+        );
+        setAddress(res.data.display_name);
+        setLoading(false);
+      } catch (error) {
+        setAddress("Unable to fetch address");
+      }
+    };
 
-//     socket.on("connect", () => {
-//       console.log("Connected to socket server", socket.id);
-//       setConnected(true);
-//     });
+    fetchAddress();
+  }, [position]);
 
-//     socket.on("disconnect", () => setConnected(false));
+  return (
+    <div className="w-full h-screen bg-gray-100 p-4">
+      <h1 className="text-3xl font-bold mb-4 text-yellow-600">
+        🚚 Courier Real-Time Rider Tracking
+      </h1>
 
-//     // receive location updates (broadcasted)
-//     socket.on("rider_location_update", (payload) => {
-//       const { lat, lng, timestamp } = payload;
-//       setMarkerPos({ lat, lng, timestamp });
-//     });
+      {/* Map Section */}
+      <div className="w-full h-[500px] rounded-lg overflow-hidden shadow-lg">
+        <MapContainer
+          center={[position.lat, position.lng]}
+          zoom={15}
+          scrollWheelZoom
+          className="h-full w-full"
+        >
+          <TileLayer
+            attribution='© OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
 
-//     return () => {
-//       socket.disconnect();
-//     };
-//   }, []);
+          <Marker position={[position.lat, position.lng]} icon={riderIcon}>
+            <Popup>
+              Rider Location <br />
+              {address}
+            </Popup>
+          </Marker>
+        </MapContainer>
+      </div>
 
-//   // join room when tracking id changes
-//   const joinRoom = useCallback(() => {
-//     if (!socketRef.current) return;
-//     socketRef.current.emit("join_room", trackingId);
-//     setAddress("");
-//     setMarkerPos(null);
-//   }, [trackingId]);
-
-//   // when marker changes, reverse geocode to address
-//   useEffect(() => {
-//     if (!isLoaded || !markerPos) return;
-
-//     // create geocoder once
-//     if (!geocoderRef.current) {
-//       // eslint-disable-next-line no-undef
-//       geocoderRef.current = new window.google.maps.Geocoder();
-//     }
-
-//     const latlng = { lat: parseFloat(markerPos.lat), lng: parseFloat(markerPos.lng) };
-//     geocoderRef.current.geocode({ location: latlng }, (results, status) => {
-//       if (status === "OK" && results[0]) {
-//         setAddress(results[0].formatted_address);
-//       } else {
-//         setAddress("Address not found");
-//       }
-//     });
-//   }, [markerPos, isLoaded]);
-
-//   // center map on marker or default location
-//   const center = markerPos ? { lat: markerPos.lat, lng: markerPos.lng } : { lat: 24.8607, lng: 67.0011 };
-
-//   return (
-//     <div className="min-h-screen bg-black text-white p-6">
-//       <div className="max-w-6xl mx-auto">
-//         <h1 className="text-4xl font-bold text-yellow-400 mb-6">Courier Traffic — Live Rider Tracking</h1>
-
-//         <div className="flex gap-6 mb-6">
-//           <input
-//             value={trackingId}
-//             onChange={(e) => setTrackingId(e.target.value)}
-//             className="p-3 rounded bg-gray-800 border border-gray-700 flex-1"
-//             placeholder="Enter tracking id (e.g. TRACK123)"
-//           />
-//           <button
-//             onClick={joinRoom}
-//             className="px-5 py-3 bg-yellow-500 text-black font-semibold rounded"
-//           >
-//             Track
-//           </button>
-//           <div className={`px-4 py-3 rounded ${connected ? "bg-green-600 text-white" : "bg-gray-700 text-gray-300"}`}>
-//             {connected ? "Socket Connected" : "Socket Disconnected"}
-//           </div>
-//         </div>
-
-//         <div className="bg-gray-900 rounded shadow p-4">
-//           {!isLoaded ? (
-//             <div className="p-12 text-center">Loading map...</div>
-//           ) : (
-//             <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={14}>
-//               {markerPos && (
-//                 <Marker
-//                   position={{ lat: markerPos.lat, lng: markerPos.lng }}
-//                   label={{
-//                     text: "🛵",
-//                     className: "text-2xl",
-//                   }}
-//                 />
-//               )}
-//             </GoogleMap>
-//           )}
-
-//           <div className="mt-4 p-4 bg-gray-800 rounded flex items-start gap-4">
-//             <div className="flex-1">
-//               <p className="text-sm text-gray-400">Rider current address:</p>
-//               <p className="text-lg text-yellow-400 font-semibold">{address || "—"}</p>
-//             </div>
-//             <div className="text-right">
-//               <p className="text-sm text-gray-400">Last update</p>
-//               <p className="text-sm">{markerPos ? new Date(markerPos.timestamp).toLocaleString() : "—"}</p>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
+      {/* Address Section */}
+      <div className="mt-6 bg-white p-4 shadow-md rounded-lg">
+        <h2 className="text-xl font-semibold text-gray-700">📍 Current Address</h2>
+        <p className="mt-2 text-gray-800">
+          {loading ? "Loading..." : address}
+        </p>
+      </div>
+    </div>
+  );
+}
+//"leaflet": "^1.9.4",
